@@ -1,50 +1,77 @@
 import streamlit as st
 import pandas as pd
 
-st.title("🌸🍂 봄·가을은 점점 짧아지고 있는가?")
-st.write("기온 데이터를 기반으로 계절 길이 변화를 통계적으로 분석합니다.")
+st.title("🌸🍂 봄·가을은 점점 짧아지고 있는가? (통계 분석)")
 
-# ✔ 파일 이름 그대로 사용
-file_path = "ta_20260601093156(1).csv"
+# 파일 업로드
+uploaded_file = st.file_uploader("CSV 파일 업로드", type=["csv"])
 
-# 데이터 불러오기
-df = pd.read_csv(file_path)
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
 
-# 데이터 확인
-st.subheader("📊 원본 데이터")
-st.write(df.head())
+    st.subheader("📊 데이터 미리보기")
+    st.write(df.head())
 
-# 👉 컬럼 자동 추정 (보통 이런 형태일 가능성 높음)
-# 날짜 / 평균기온
-date_col = df.columns[0]
-temp_col = df.columns[1]
+    # 컬럼 자동 설정
+    date_col = df.columns[0]
+    temp_col = df.columns[1]
 
-# 날짜 변환
-df[date_col] = pd.to_datetime(df[date_col])
-df["year"] = df[date_col].dt.year
+    df[date_col] = pd.to_datetime(df[date_col])
+    df["year"] = df[date_col].dt.year
 
-# ✔ 봄/가을 조건 (10~20도)
-season_df = df[(df[temp_col] >= 10) & (df[temp_col] <= 20)]
+    # 🌸 봄 (10~20도 상승 구간 느낌)
+    spring = df[(df[temp_col] >= 10) & (df[temp_col] <= 20) & (df[date_col].dt.month <= 6)]
 
-# 연도별 일수 계산
-season_days = season_df.groupby("year").size()
+    # 🍂 가을 (10~20도 하강 구간 느낌)
+    autumn = df[(df[temp_col] >= 10) & (df[temp_col] <= 20) & (df[date_col].dt.month >= 7)]
 
-st.subheader("📈 연도별 봄·가을 일수")
-st.line_chart(season_days)
+    spring_days = spring.groupby("year").size()
+    autumn_days = autumn.groupby("year").size()
 
-# 평균 비교
-st.subheader("📉 평균 변화 분석")
+    # 그래프
+    st.subheader("🌸 봄 기간 변화")
+    st.line_chart(spring_days)
 
-first_half = season_days[season_days.index < season_days.index.mean()]
-second_half = season_days[season_days.index >= season_days.index.mean()]
+    st.subheader("🍂 가을 기간 변화")
+    st.line_chart(autumn_days)
 
-st.write("과거 평균:", round(first_half.mean(), 2))
-st.write("최근 평균:", round(second_half.mean(), 2))
+    # 📉 회귀분석 (기울기 계산)
+    def get_slope(series):
+        x = series.index.values
+        y = series.values
+        if len(x) < 2:
+            return 0
+        slope = ((x - x.mean()) * (y - y.mean())).sum() / ((x - x.mean())**2).sum()
+        return slope
 
-# 결론 자동 출력
-st.subheader("📌 결론")
+    spring_slope = get_slope(spring_days)
+    autumn_slope = get_slope(autumn_days)
 
-if second_half.mean() < first_half.mean():
-    st.success("👉 최근으로 갈수록 봄·가을 기간이 짧아지는 경향이 확인됩니다.")
-else:
-    st.warning("👉 뚜렷한 감소 경향이 확인되지 않습니다.")
+    st.subheader("📉 회귀분석 결과")
+
+    st.write(f"봄 기울기: {round(spring_slope, 3)}")
+    st.write(f"가을 기울기: {round(autumn_slope, 3)}")
+
+    # 평균 비교
+    mid_year = int(df["year"].mean())
+
+    spring_old = spring_days[spring_days.index < mid_year]
+    spring_new = spring_days[spring_days.index >= mid_year]
+
+    autumn_old = autumn_days[autumn_days.index < mid_year]
+    autumn_new = autumn_days[autumn_days.index >= mid_year]
+
+    st.subheader("📊 평균 비교")
+
+    st.write("봄 (과거 vs 최근):", round(spring_old.mean(),2), "→", round(spring_new.mean(),2))
+    st.write("가을 (과거 vs 최근):", round(autumn_old.mean(),2), "→", round(autumn_new.mean(),2))
+
+    # 결론
+    st.subheader("📌 결론")
+
+    if spring_slope < 0 and autumn_slope < 0:
+        st.success("👉 봄과 가을 모두 점점 짧아지는 경향이 통계적으로 확인됩니다.")
+    elif spring_slope < 0 or autumn_slope < 0:
+        st.warning("👉 일부 계절에서 짧아지는 경향이 확인됩니다.")
+    else:
+        st.error("👉 계절 길이 감소 경향이 명확하지 않습니다.")
